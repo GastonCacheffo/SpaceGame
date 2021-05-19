@@ -5,7 +5,6 @@ variables:
   buildConfiguration: 'Release'
   dotnetSdkVersion: '3.1.300'
 
-#stages
 stages:
 - stage: 'Build'
   displayName: 'Build the web application'
@@ -53,7 +52,7 @@ stages:
       inputs:
         command: 'build'
         arguments: '--no-restore --configuration $(buildConfiguration)'
-        projects: '**/*.csproj'
+        projects: '$(System.DefaultWorkingDirectory)/**/Tailspin.SpaceGame.Web.csproj'
 
     - task: DotNetCoreCLI@2
       displayName: 'Publish the project - $(buildConfiguration)'
@@ -86,7 +85,7 @@ stages:
           - task: AzureWebApp@1
             displayName: 'Azure App Service Deploy: website'
             inputs:
-              azureSubscription: 'Resource Manager - Tailspin - Space Game'
+              azureSubscription: 'ARM Free susc'
               appName: '$(WebAppNameDev)'
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
 
@@ -109,7 +108,7 @@ stages:
           - task: AzureWebApp@1
             displayName: 'Azure App Service Deploy: website'
             inputs:
-              azureSubscription: 'Resource Manager - Tailspin - Space Game'
+              azureSubscription: 'ARM Free susc'
               appName: '$(WebAppNameTest)'
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
   - job: RunUITests
@@ -157,6 +156,29 @@ stages:
           - task: AzureWebApp@1
             displayName: 'Azure App Service Deploy: website'
             inputs:
-              azureSubscription: 'Resource Manager - Tailspin - Space Game'
+              azureSubscription: 'ARM Free susc'
               appName: '$(WebAppNameStaging)'
               package: '$(Pipeline.Workspace)/drop/$(buildConfiguration)/*.zip'
+	- job: RunLoadTests	
+    dependsOn: Deploy	
+    displayName: 'Run load tests'	
+    pool:	
+      vmImage: 'ubuntu-18.04'	
+    variables:	
+    - group: Release	
+    steps:	
+    - script: |	
+        wget --header="accept-encoding: gzip" -c ftp.ps.pl/pub/apache/jmeter/binaries/apache-jmeter-$(jmeterVersion).tgz	
+        tar -xzf apache-jmeter-$(jmeterVersion).tgz	
+      displayName: 'Install Apache JMeter'	
+    - script: apache-jmeter-$(jmeterVersion)/bin/./jmeter -n -t LoadTest.jmx -o Results.xml -Jhostname=$(STAGING_HOSTNAME)	
+      displayName: 'Run Load tests'	
+    - script: |	
+        sudo apt-get update	
+        sudo apt-get install xsltproc	
+        xsltproc JMeter2JUnit.xsl Results.xml > JUnit.xml	
+      displayName: 'Transform JMeter output to JUnit'	
+    - task: PublishTestResults@2	
+      inputs:	
+        testResultsFormat: JUnit	
+        testResultsFiles: JUnit.xml
